@@ -20,6 +20,9 @@ from sklearn.metrics import f1_score,precision_score,recall_score
 from tensorflow.python.ops import math_ops
 import tf_metrics
 import pickle
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+
 flags = tf.flags
 
 FLAGS = flags.FLAGS
@@ -55,7 +58,7 @@ flags.DEFINE_bool(
 )
 
 flags.DEFINE_integer(
-    "max_seq_length", 128,
+    "max_seq_length", 256,
     "The maximum total input sequence length after WordPiece tokenization."
 )
 
@@ -65,11 +68,11 @@ flags.DEFINE_bool(
 )
 flags.DEFINE_bool("use_tpu", False, "Whether to use TPU or GPU/CPU.")
 
-flags.DEFINE_bool("do_eval", False, "Whether to run eval on the dev set.")
+flags.DEFINE_bool("do_eval", True, "Whether to run eval on the dev set.")
 
-flags.DEFINE_bool("do_predict", False,"Whether to run the model in inference mode on the test set.")
+flags.DEFINE_bool("do_predict", True,"Whether to run the model in inference mode on the test set.")
 
-flags.DEFINE_integer("train_batch_size", 8, "Total batch size for training.")
+flags.DEFINE_integer("train_batch_size", 16, "Total batch size for training.")
 
 flags.DEFINE_integer("eval_batch_size", 8, "Total batch size for eval.")
 
@@ -77,7 +80,7 @@ flags.DEFINE_integer("predict_batch_size", 8, "Total batch size for predict.")
 
 flags.DEFINE_float("learning_rate", 5e-5, "The initial learning rate for Adam.")
 
-flags.DEFINE_float("num_train_epochs", 10.0, "Total number of training epochs to perform.")
+flags.DEFINE_float("num_train_epochs", 100.0, "Total number of training epochs to perform.")
 
 
 
@@ -178,12 +181,12 @@ class NerProcessor(DataProcessor):
 
     def get_dev_examples(self, data_dir):
         return self._create_example(
-            self._read_data(os.path.join(data_dir, "dev.txt")), "dev"
+            self._read_data(os.path.join(data_dir, "train_data.txt")), "dev"
         )
 
     def get_test_examples(self,data_dir):
         return self._create_example(
-            self._read_data(os.path.join(data_dir, "example.txt")), "test")
+            self._read_data(os.path.join(data_dir, "test_data.txt")), "test")
 
 
     def get_labels(self):
@@ -500,15 +503,21 @@ def main(_):
 
     is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
 
+    tpu_config = tf.contrib.tpu.TPUConfig(
+            iterations_per_loop=FLAGS.iterations_per_loop,
+            num_shards=FLAGS.num_tpu_cores,
+            per_host_input_for_training=is_per_host)
+
+    session_config = tf.ConfigProto()
+    session_config.gpu_options.allow_growth = True
+
     run_config = tf.contrib.tpu.RunConfig(
         cluster=tpu_cluster_resolver,
         master=FLAGS.master,
         model_dir=FLAGS.output_dir,
         save_checkpoints_steps=FLAGS.save_checkpoints_steps,
-        tpu_config=tf.contrib.tpu.TPUConfig(
-            iterations_per_loop=FLAGS.iterations_per_loop,
-            num_shards=FLAGS.num_tpu_cores,
-            per_host_input_for_training=is_per_host))
+        tpu_config=tpu_config,
+        session_config=session_config)
 
     train_examples = None
     num_train_steps = None
